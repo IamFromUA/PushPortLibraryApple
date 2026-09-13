@@ -2,5 +2,5 @@ version: 1
 builder:
   configs:
     - platform: ios
-      scheme: PushPort
-      documentation_targets: [PushPort, PushPortCore]
+      scheme: PushPort-Package
+      documentation_targets: [PushPort, PushPortCore, PushPortNotificationService]

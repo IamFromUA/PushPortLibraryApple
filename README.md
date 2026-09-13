@@ -1,12 +1,27 @@
 # PushPort Apple SDK
 
+[![Native iOS verification](https://github.com/IamFromUA/PushPortLibraryApple/actions/workflows/verify.yml/badge.svg)](https://github.com/IamFromUA/PushPortLibraryApple/actions/workflows/verify.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+
 Native Swift SDK for iOS push subscriptions, device metadata and notification interactions. Distributed as a normal Swift package. No Firebase dependency, account credentials or Google configuration files are embedded in the application.
 
-**Version: 0.0.1, not published.** iOS 15+, Swift 5.9+. iPhone and iPad are the initial supported devices. The macOS package target is for core development/tests; macOS push delivery is not implemented.
+**Version: 0.0.1.** iOS 15+, Swift 5.9+. iPhone and iPad are the initial supported devices. The macOS package target is for core development/tests; macOS push delivery is not implemented. This is an initial release; read [server readiness](#server-readiness) before planning production delivery.
 
 ## Install
 
-Before publication, add this directory as a local package in Xcode. After a verified `0.0.1` release, add the actual repository URL through **File → Add Package Dependencies** and select the **PushPort** product for the application target.
+In Xcode, open **File → Add Package Dependencies**, paste the repository URL below, choose **Exact Version: 0.0.1**, and add the **PushPort** product to your application target:
+
+```text
+https://github.com/IamFromUA/PushPortLibraryApple.git
+```
+
+For a Swift package consumer, add this dependency to `Package.swift` and `.product(name: "PushPort", package: "PushPortLibraryApple")` to your iOS target:
+
+```swift
+.package(url: "https://github.com/IamFromUA/PushPortLibraryApple.git", exact: "0.0.1")
+```
+
+No App Store submission, CocoaPods account or private package registry is required. See the [Russian integration guide](docs/getting-started.ru.md) for the full setup.
 
 ```swift
 import PushPort
@@ -58,7 +73,7 @@ The main SDK installs a forwarding `UNUserNotificationCenterDelegate`, preservin
 
 This SDK uses the new `/api/v1/sdk/apps/{appId}/platforms/ios` contract. The accompanying local backend changes implement registration/configuration/events, preserve Android compatibility, and report `deliveryReady: false`. The existing production deployment is still Android-only. APNs sender credentials, sender implementation, dashboard credential fields and production rollout are a subsequent integration step; publishing this package alone does not enable server delivery.
 
-SDK-side handling can also be tested on a simulator with `simctl push`; actual APNs delivery needs an Apple Developer account, signed app and server configuration. No server or Firebase app has been registered on your behalf.
+SDK-side handling can also be tested on a simulator with `simctl push`; actual APNs delivery needs an Apple Developer account, signed app and server configuration. The SDK never creates Apple identifiers or uploads provider credentials from a client application.
 
 ## Quality and publication
 
@@ -68,6 +83,6 @@ SDK-side handling can also be tested on a simulator with `simctl push`; actual A
 - [Testing](docs/testing.md)
 - [Contributing](CONTRIBUTING.md), [security](SECURITY.md), [changelog](CHANGELOG.md)
 
-`swift test` runs the portable engine tests. The macOS CI additionally builds and tests the real iOS targets on Simulator. A Linux test pass does **not** validate UIKit, APNs registration, Objective-C selectors or the Notification Service Extension. All iOS gates must pass before the first release.
+`swift test` runs the portable engine tests. The macOS CI additionally builds and tests the iOS targets on Simulator, verifies Objective-C bridge selectors and builds an independent app plus extension using the public Git package. See [verification evidence and limits](docs/verification.md). A native build does not verify actual APNs delivery.
 
 Apache-2.0 · Copyright 2026 Oleh Yurkov · support@pushport.dev

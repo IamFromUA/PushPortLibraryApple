@@ -3,7 +3,7 @@ import XCTest
 #if os(iOS)
 final class NotificationTests: XCTestCase {
     func testOnlyCanonicalMessagesAndSafeClickURLsAreExposed() {
-        let appId = "6d632180-a023-4101-a4b1-9068404346f8"
+        let appId = "00000000-0000-4000-8000-000000000001"
         let messageId = UUID().uuidString.lowercased()
         XCTAssertNil(PushPortNotification(userInfo: ["pushport_app_id": appId]))
         let valid = PushPortNotification(userInfo: ["pushport_app_id": appId, "pushport_message_id": messageId, "click_url": "https://pushport.dev/docs"])

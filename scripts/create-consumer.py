@@ -72,6 +72,7 @@ text += f'\n}}; rootObject = {ident(1)};}}\n'
 import PushPort
 
 @main
+@MainActor
 struct ConsumerApp: App {
     // Retaining the public Objective-C bridge exercises linking of the KMP-facing API.
     private let bridge = PushPortKMPBridge()

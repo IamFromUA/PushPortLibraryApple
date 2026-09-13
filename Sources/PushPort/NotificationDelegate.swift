@@ -14,7 +14,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             guard let self else { completionHandler([]); return }
             let ours = self.owner?.recognizes(notification) == true
             if ours && self.owner?.status?.subscribed == false { completionHandler([]); return }
-            if let forwarding, forwarding.responds(to: #selector(userNotificationCenter(_:willPresent:withCompletionHandler:))) {
+            if let forwarding, forwarding.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))) {
                 forwarding.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
             } else { completionHandler(ours ? [.banner, .list, .sound] : []) }
         }
@@ -24,7 +24,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         Task { @MainActor [weak self] in
             _ = self?.owner?.handleNotificationResponse(response)
             if let forwarding = self?.forwarding,
-               forwarding.responds(to: #selector(userNotificationCenter(_:didReceive:withCompletionHandler:))) {
+               forwarding.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
                 forwarding.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
             } else { completionHandler() }
         }

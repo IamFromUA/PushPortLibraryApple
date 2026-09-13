@@ -27,7 +27,7 @@ actor FakeTransport: Transport {
 }
 
 final class EngineTests: XCTestCase {
-    let appId = "6d632180-a023-4101-a4b1-9068404346f8"
+    let appId = "00000000-0000-4000-8000-000000000001"
     var metadata: DeviceMetadata {
         DeviceMetadata(locale: "en-US", appLocales: ["en-US"], systemLocales: ["de-DE", "en-US"], timezone: "Europe/Berlin",
                        notificationsEnabled: true, appVersion: "1.0", osVersion: "18", model: "iPhone")
