@@ -1,0 +1,6 @@
+{
+  "aps": { "alert": { "title": "PushPort", "body": "Local simulator notification" }, "sound": "default", "mutable-content": 1 },
+  "pushport_app_id": "00000000-0000-0000-0000-000000000001",
+  "pushport_message_id": "00000000-0000-0000-0000-000000000002",
+  "click_url": "https://pushport.dev"
+}
