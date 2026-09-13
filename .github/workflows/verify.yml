@@ -18,7 +18,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Toolchain
         run: xcodebuild -version && swift --version
       - name: Build and test Swift, iOS and extension
@@ -29,16 +29,31 @@ jobs:
         run: bash scripts/verify-consumer.sh
       - name: Build DocC documentation
         run: xcodebuild docbuild -scheme PushPort-Package -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/documentation CODE_SIGNING_ALLOWED=NO
+      - name: Package DocC archives
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          root = Path('.build/documentation/Build/Products/Debug-iphonesimulator')
+          archives = list(root.glob('*.doccarchive'))
+          assert archives, 'No DocC archives were generated'
+          with ZipFile('.build/PushPort-Documentation.zip', 'w', ZIP_DEFLATED) as output:
+              for archive in archives:
+                  for file in archive.rglob('*'):
+                      if file.is_file():
+                          output.write(file, file.relative_to(root))
+          print('Packaged:', ', '.join(archive.name for archive in archives))
+          PY
       - name: Keep documentation archives
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: documentation
-          path: .build/documentation/Build/Products/Debug-iphonesimulator/*.doccarchive
+          path: .build/PushPort-Documentation.zip
           if-no-files-found: error
           retention-days: 7
       - name: Keep native test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: native-test-results
           path: .build/ios/Logs/Test/*.xcresult
