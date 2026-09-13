@@ -18,4 +18,4 @@ Retry uses capped exponential delay with jitter while the process can run. iOS m
 
 The KMP bridge is an explicit small Objective-C surface. It forwards to the same Swift singleton. It has no network stack or second installation. Keep its selectors synchronized with the header published in the KMP repository, and test both packages on macOS before changing it.
 
-Current limitations: iOS/iPadOS only, no silent-push background execution, no mutable APNs environment after binding, no arbitrary URL scheme navigation, no delivery receipt inferred from a token. The server sender/credential UI must be commissioned separately from SDK publication.
+Current limitations: iOS/iPadOS only, no silent-push background execution, no mutable APNs environment after binding, no arbitrary URL scheme navigation, no delivery receipt inferred from a token. Provider configuration belongs in the PushPort application settings, separately from SDK installation. Validate actual delivery before campaigns.

@@ -71,7 +71,7 @@ The main SDK installs a forwarding `UNUserNotificationCenterDelegate`, preservin
 
 ## Server readiness
 
-This SDK uses the new `/api/v1/sdk/apps/{appId}/platforms/ios` contract. The accompanying local backend changes implement registration/configuration/events, preserve Android compatibility, and report `deliveryReady: false`. The existing production deployment is still Android-only. APNs sender credentials, sender implementation, dashboard credential fields and production rollout are a subsequent integration step; publishing this package alone does not enable server delivery.
+This SDK uses `/api/v1/sdk/apps/{appId}/platforms/ios`. In PushPort, enable iOS for your application, save the exact Bundle ID, then open Settings → Apple APNs. Upload the `.p8` key with Team ID and Key ID for each required environment (Sandbox or Production). The server uses APNs directly; Firebase is unnecessary. Saved credentials enable routing but do not prove delivery: verify a signed application on a real device before launching a campaign. See the [complete setup guide](https://pushport.dev/en/docs/#apns).
 
 SDK-side handling can also be tested on a simulator with `simctl push`; actual APNs delivery needs an Apple Developer account, signed app and server configuration. The SDK never creates Apple identifiers or uploads provider credentials from a client application.
 
