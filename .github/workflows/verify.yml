@@ -14,5 +14,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
       - name: Build and test Swift, iOS and extension
         run: bash scripts/verify-ios.sh
+      - name: Verify independent app consuming the public package
+        run: bash scripts/verify-consumer.sh
+      - name: Keep native test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-test-results
+          path: .build/ios/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7

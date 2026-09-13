@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a reproducible SDK issue.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: SDK, iOS and Xcode versions
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include a small example and expected/actual behavior. Remove tokens, credentials, App IDs and personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Never include APNs keys, installation secrets or raw device tokens. Report security issues privately to support@pushport.dev.
