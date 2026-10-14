@@ -60,11 +60,12 @@ final class EngineTests: XCTestCase {
         for _ in 0..<105 { try await engine.record(NotificationEvent(type: "session_started", reason: "organic")) }
         let ids = store.load()!.supplemental!.events.map(\.id)
         await transport.fail(.network); do { try await engine.flush(); XCTFail() } catch {}
-        XCTAssertEqual(store.load()?.supplemental?.events.map(\.id), ids)
+        XCTAssertEqual(Array(store.load()!.supplemental!.events.prefix(105)).map(\.id), ids)
         let restarted = try InstallationEngine(configuration: config(), store: store, transport: transport)
         await transport.fail(nil); try await restarted.flush()
         let batches = await transport.diagnostics
-        XCTAssertEqual(batches.map(\.count), [100, 5]); XCTAssertEqual(batches.flatMap { $0.map(\.id) }, ids)
+        XCTAssertEqual(batches.map(\.count), [100, 6]); XCTAssertEqual(Array(batches.flatMap { $0.map(\.id) }.prefix(105)), ids)
+        XCTAssertEqual(batches.last?.last?.type, "sync_failed")
         XCTAssertEqual(store.load()?.supplemental?.events.count, 0)
         XCTAssertEqual(store.load()?.snapshot?.telemetryVersion, 1)
     }

@@ -18,6 +18,7 @@ public final class PushPort {
     public private(set) var status: Status?
     public private(set) var registrationError: String?
     public private(set) var user: PushPortUser?
+    public private(set) var collectionEnabled = true
     private var consentRequired: Bool?
     private var consentGiven: Bool?
     private var groupDirectory: URL?
@@ -53,6 +54,7 @@ public final class PushPort {
                                                   appropriateFor: nil, create: true)
         let store = try FileStateStore(directory: support.appendingPathComponent("PushPort", isDirectory: true))
         engine = try InstallationEngine(configuration: config, store: store, consentRequired: consentRequired, consentGiven: consentGiven)
+        collectionEnabled = try store.load()?.supplemental?.collectionAllowed ?? true
         configuration = config
         if let group = Bundle.main.object(forInfoDictionaryKey: "PushPortAppGroup") as? String,
            let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) {
@@ -157,6 +159,7 @@ public final class PushPort {
     private func synchronize() async {
         guard let engine else { return }
         let allowed = await engine.collectionAllowed()
+        collectionEnabled = allowed
         if let directory = groupDirectory, let config = configuration {
             struct Consent: Encodable { let appId: String; let allowed: Bool }
             try? JSONEncoder().encode(Consent(appId: config.appId, allowed: allowed)).write(to: directory.appendingPathComponent("PushPortNotificationConsent.json"), options: .atomic)

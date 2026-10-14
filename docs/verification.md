@@ -1,3 +1,7 @@
+# Version 0.0.2 verification
+
+The release checks cover state upgrade without duplicate installations, bounded retry/acknowledgement diagnostics, consent, user operations, image policy and native integration. Apple/iOS and KMP/Swift linking must pass macOS CI before tagging/publishing. See the matching GitHub Actions run for the release commit. Portable Swift checks are not native iOS verification. Real provider delivery remains a separate integration check.
+
 # Verification — 2026-09-13
 
 Native verification runs on GitHub-hosted macOS with Xcode. The [verification workflow](https://github.com/IamFromUA/PushPortLibraryApple/actions/workflows/verify.yml) records the exact commit, toolchain, test results and consumer build for each push/tag.

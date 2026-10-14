@@ -16,7 +16,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let complete: (UNNotificationPresentationOptions) -> Void = { [weak self] options in
                 self?.owner?.presented(notification, options: options); completionHandler(options)
             }
-            if ours && self.owner?.status?.subscribed == false { complete([]); return }
+            if ours && (self.owner?.status?.subscribed == false || self.owner?.collectionEnabled == false) { complete([]); return }
             if let forwarding, forwarding.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))) {
                 forwarding.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: complete)
             } else { complete(ours ? [.banner, .list, .sound] : []) }

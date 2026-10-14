@@ -30,3 +30,17 @@ APNs display payload: `aps.alert.title/body`, optionally `aps.sound`, `aps.mutab
 HTTP 400: invalid payload; 401: installation credential; 403: identifier/origin mismatch; 404: application/route absent; 409: configuration conflict; 429/5xx/network: bounded retry. SDK diagnostics omit raw response bodies, tokens, endpoints and bearer secrets.
 
 Apple provisioning: authenticated `PUT /api/v1/apps/{appId}/platforms/ios` takes `environment`, `teamId`, `keyId` and the PKCS#8 P-256 `.p8` contents as `privateKey`. Enable iOS and save its Bundle ID first. Configure Sandbox and Production independently. The private key is encrypted and never returned. The customer console exposes equivalent session/CSRF-protected `/web/apps/{appId}/platforms` routes.
+
+## SDK 0.0.2 diagnostics and user profiles
+
+Platform config adds optional `telemetryVersion: 1`, `userProfileVersion: 1` and `imageLimitBytes` (default 5242880, project setting 1–20 MiB). Platform snapshots add `telemetryVersion` and `usage` (`firstSessionAt`, `lastSessionAt`, `sessionCount`, `totalUsageMillis`). SDKs negotiate capabilities before adding fields; absent capabilities retain legacy registration/click behavior.
+
+Authenticated endpoints under `/api/v1/sdk/apps/{appId}/platforms/{ios|web}/installations/{id}`:
+
+- `POST /telemetry`: `{events:[{id,type,occurredAt,messageId?,reason?,durationMillis?,sizeBytes?,httpStatus?}],dropped}`. Up to 100 events; acknowledgement `{acceptedIds:[...]}`. Stable IDs make retries idempotent. Uses the same receipt/image/click/session diagnostics schema and reports as Android.
+- `GET /user`: last confirmed `{userId,externalId,properties,revision}`.
+- `PUT /user`: existing monotonic user operation schema (`tags`, verified `login`, `logout`, `email`, `phone`, `location`, `event`).
+
+Web Origin must match the project for all operations; credentials belonging to another platform are rejected. Provider payloads include the current `image_limit_bytes`. APNs uses mutable-content for extension receipt diagnostics even without an image, with a 10 MiB attachment ceiling. Web includes optional `large_icon` (HTTPS picture); Android small_icon resource names are not browser badge URLs.
+
+Apple background diagnostics need the same `PushPortAppGroup` Info.plist value and entitlement in app and extension. Only event spool files are shared; credentials stay in the host app. Events upload on the host's next sync. Neither extension content preparation nor Web showNotification acceptance proves the user saw the notification.

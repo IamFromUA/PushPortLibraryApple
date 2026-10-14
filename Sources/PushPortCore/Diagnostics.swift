@@ -43,20 +43,23 @@ public enum NotificationImagePolicy {
     }
     public static func allowsPixels(width: Int, height: Int) -> Bool { width > 0 && height > 0 && width <= 4096 && height <= 4096 && width * height <= 8000000 }
 }
-public struct UserProperties: Codable, Equatable, Sendable {
+public struct UserProperties: Codable, Equatable, Sendable, CustomStringConvertible {
+    public var description: String { "UserProperties(<redacted>)" }
     public var tags: [String: String]
     public var email: String?
     public var phoneNumber: String?
     public var latitude: Double?
     public var longitude: Double?
 }
-public struct PushPortUser: Codable, Equatable, Sendable {
+public struct PushPortUser: Codable, Equatable, Sendable, CustomStringConvertible {
+    public var description: String { "PushPortUser(userId=\(userId), revision=\(revision), properties=<redacted>)" }
     public var userId: String
     public var externalId: String?
     public var properties: UserProperties
     public var revision: Int64
 }
-public struct UserOperation: Codable, Sendable {
+public struct UserOperation: Codable, Sendable, CustomStringConvertible {
+    public var description: String { "UserOperation(revision=\(revision), kind=\(kind), data=<redacted>)" }
     public var revision: Int64 = 0
     public var kind: String
     public var externalId: String?

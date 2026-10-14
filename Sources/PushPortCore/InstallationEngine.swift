@@ -62,7 +62,7 @@ public actor InstallationEngine {
         var extra = state.supplemental ?? SupplementalState()
         let fresh = extra.usage.sessionCount == 0 || wallMillis - extra.lastActivityAt >= 30000 || wallMillis < extra.lastActivityAt
         if fresh {
-            extra.usage.firstSessionAt = extra.usage.firstSessionAt ?? wallMillis; extra.usage.lastSessionAt = wallMillis; extra.usage.sessionCount += 1
+            extra.usage.firstSessionAt = extra.usage.firstSessionAt ?? wallMillis; extra.usage.lastSessionAt = max(wallMillis, extra.usage.lastSessionAt ?? wallMillis); extra.usage.sessionCount += 1
         }
         extra.lastActivityAt = wallMillis; state.supplemental = extra
         if fresh {
@@ -172,6 +172,13 @@ public actor InstallationEngine {
         } catch {
             let safe = (error as? PushPortFailure) ?? .storageUnavailable
             state.syncError = safe.localizedDescription
+            let reason: String
+            let status: Int?
+            switch safe { case .network: reason = "network_error"; status = nil
+                case .http(let value): reason = "http_error"; status = value
+                case .invalidResponse: reason = "invalid_response"; status = nil
+                default: reason = "storage_unavailable"; status = nil }
+            try? record(NotificationEvent(type: "sync_failed", reason: reason, httpStatus: status))
             try? store.save(state)
             throw safe
         }
