@@ -13,10 +13,13 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         Task { @MainActor [weak self] in
             guard let self else { completionHandler([]); return }
             let ours = self.owner?.recognizes(notification) == true
-            if ours && self.owner?.status?.subscribed == false { completionHandler([]); return }
+            let complete: (UNNotificationPresentationOptions) -> Void = { [weak self] options in
+                self?.owner?.presented(notification, options: options); completionHandler(options)
+            }
+            if ours && self.owner?.status?.subscribed == false { complete([]); return }
             if let forwarding, forwarding.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))) {
-                forwarding.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: completionHandler)
-            } else { completionHandler(ours ? [.banner, .list, .sound] : []) }
+                forwarding.userNotificationCenter?(center, willPresent: notification, withCompletionHandler: complete)
+            } else { complete(ours ? [.banner, .list, .sound] : []) }
         }
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,

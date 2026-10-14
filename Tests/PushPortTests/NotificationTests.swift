@@ -15,7 +15,8 @@ final class NotificationTests: XCTestCase {
     @MainActor func testKMPBridgeHasStableSelectors() {
         let bridge = PushPortKMPBridge()
         for name in ["statusJSON", "sync", "initializeWithAppId:serverURL:environment:completion:",
-                     "setSubscribed:completion:", "setLocale:completion:", "requestPermissionWithCompletion:"] {
+                     "setSubscribed:completion:", "setLocale:completion:", "requestPermissionWithCompletion:",
+                     "userJSON", "updateUserJSON:completion:", "setConsentRequired:completion:", "setConsentGiven:completion:"] {
             XCTAssertTrue(bridge.responds(to: NSSelectorFromString(name)), name)
         }
     }

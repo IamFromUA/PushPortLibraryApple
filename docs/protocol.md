@@ -1,4 +1,4 @@
-# PushPort SDK platform protocol 1 (release 0.0.1)
+# PushPort SDK platform protocol 1 (release 0.0.2)
 
 Android's existing `/api/v1/sdk/apps/{appId}` v1 API is preserved. Native Apple and Web use a separate platform boundary under `/api/v1/sdk/apps/{appId}/platforms/{ios|web}`. The server supports native APNs and Web Push routing. See [provider setup](https://pushport.dev/en/docs/) for current deployment and application configuration.
 

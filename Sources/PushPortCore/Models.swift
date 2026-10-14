@@ -88,6 +88,8 @@ public struct DeviceSnapshot: Codable, Equatable, Sendable {
     public let appVersion: String
     public let osVersion: String
     public let model: String
+    public var telemetryVersion: Int? = nil
+    public var usage: UsageSnapshot? = nil
 }
 
 public struct Status: Codable, Equatable, Sendable {
@@ -115,6 +117,7 @@ public struct PersistentState: Codable, Sendable, CustomStringConvertible {
     public var pendingEvents: [String]
     public var lastSyncedAt: Int64?
     public var syncError: String?
+    public var supplemental: SupplementalState? = nil
 
     public var description: String { "PersistentState(installationId=\(installationId), revision=\(revision), credentials=<redacted>)" }
 
@@ -135,12 +138,15 @@ public struct PersistentState: Codable, Sendable, CustomStringConvertible {
 
     public func makeSnapshot(_ metadata: DeviceMetadata) -> DeviceSnapshot {
         let locale = localeOverride ?? metadata.locale
-        return DeviceSnapshot(revision: revision + 1, platform: "IOS", applicationIdentifier: configuration.bundleId,
+        var result = DeviceSnapshot(revision: revision + 1, platform: "IOS", applicationIdentifier: configuration.bundleId,
                               apnsEnvironment: configuration.environment, pushToken: token,
                               language: String(locale.split(separator: "-").first ?? "en").lowercased(), locale: locale,
                               appLocales: localeOverride.map { [$0] } ?? metadata.appLocales, systemLocales: metadata.systemLocales,
                               timezone: metadata.timezone, notificationsEnabled: metadata.notificationsEnabled,
-                              pushSubscribed: subscribed, sdkVersion: "0.0.1", appVersion: metadata.appVersion,
+                              pushSubscribed: subscribed, sdkVersion: "0.0.2", appVersion: metadata.appVersion,
                               osVersion: metadata.osVersion, model: metadata.model)
+        result.telemetryVersion = supplemental?.telemetryVersion ?? 0
+        result.usage = supplemental?.usage
+        return result
     }
 }

@@ -5,11 +5,11 @@
 
 Native Swift SDK for iOS push subscriptions, device metadata and notification interactions. Distributed as a normal Swift package. No Firebase dependency, account credentials or Google configuration files are embedded in the application.
 
-**Version: 0.0.1.** iOS 15+, Swift 5.9+. iPhone and iPad are the initial supported devices. The macOS package target is for core development/tests; macOS push delivery is not implemented. This is an initial release; read [server readiness](#server-readiness) before planning production delivery.
+**Version: 0.0.2.** iOS 15+, Swift 5.9+. iPhone and iPad are the initial supported devices. The macOS package target is for core development/tests; macOS push delivery is not implemented. This is an initial release; read [server readiness](#server-readiness) before planning production delivery.
 
 ## Install
 
-In Xcode, open **File → Add Package Dependencies**, paste the repository URL below, choose **Exact Version: 0.0.1**, and add the **PushPort** product to your application target:
+In Xcode, open **File → Add Package Dependencies**, paste the repository URL below, choose **Exact Version: 0.0.2**, and add the **PushPort** product to your application target:
 
 ```text
 https://github.com/IamFromUA/PushPortLibraryApple.git
@@ -18,7 +18,7 @@ https://github.com/IamFromUA/PushPortLibraryApple.git
 For a Swift package consumer, add this dependency to `Package.swift` and `.product(name: "PushPort", package: "PushPortLibraryApple")` to your iOS target:
 
 ```swift
-.package(url: "https://github.com/IamFromUA/PushPortLibraryApple.git", exact: "0.0.1")
+.package(url: "https://github.com/IamFromUA/PushPortLibraryApple.git", exact: "0.0.2")
 ```
 
 No App Store submission, CocoaPods account or private package registry is required. See the [Russian integration guide](docs/getting-started.ru.md) for the full setup.
@@ -86,3 +86,5 @@ SDK-side handling can also be tested on a simulator with `simctl push`; actual A
 `swift test` runs the portable engine tests. The macOS CI additionally builds and tests the iOS targets on Simulator, verifies Objective-C bridge selectors and builds an independent app plus extension using the public Git package. See [verification evidence and limits](docs/verification.md). A native build does not verify actual APNs delivery.
 
 Apache-2.0 · Copyright 2026 Oleh Yurkov · support@pushport.dev
+
+See [diagnostics, consent, images and user profiles](docs/diagnostics.md) for version 0.0.2.

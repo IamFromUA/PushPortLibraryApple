@@ -11,8 +11,9 @@ let package = Package(
     targets: [
         .target(name: "PushPortCore"),
         .target(name: "PushPort", dependencies: ["PushPortCore"], resources: [.process("PrivacyInfo.xcprivacy")]),
-        .target(name: "PushPortNotificationService", resources: [.process("PrivacyInfo.xcprivacy")]),
+        .target(name: "PushPortNotificationService", dependencies: ["PushPortCore"], resources: [.process("PrivacyInfo.xcprivacy")]),
         .testTarget(name: "PushPortCoreTests", dependencies: ["PushPortCore"]),
-        .testTarget(name: "PushPortTests", dependencies: ["PushPort"])
+        .testTarget(name: "PushPortTests", dependencies: ["PushPort"]),
+        .testTarget(name: "PushPortNotificationServiceTests", dependencies: ["PushPortNotificationService"])
     ]
 )

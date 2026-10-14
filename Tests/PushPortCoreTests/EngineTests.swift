@@ -13,6 +13,15 @@ actor FakeTransport: Transport {
     var events: [String] = []
     var failure: PushPortFailure?
     var delay: UInt64 = 0
+    var diagnostics: [[NotificationEvent]] = []
+    var supportsDiagnostics = false
+    func remoteConfiguration(_ configuration: Configuration) async throws -> RemoteConfiguration {
+        try await configure(configuration); return RemoteConfiguration(telemetryVersion: supportsDiagnostics ? 1 : 0)
+    }
+    func telemetry(_ state: PersistentState, events: [NotificationEvent], dropped: Int64) async throws -> [String] {
+        if let failure { throw failure }; diagnostics.append(events); return events.map(\.id)
+    }
+    func enableDiagnostics() { supportsDiagnostics = true }
     func configure(_ configuration: Configuration) async throws { if let failure { throw failure } }
     func register(_ state: PersistentState, snapshot: DeviceSnapshot) async throws {
         if delay > 0 { try await Task.sleep(nanoseconds: delay) }
@@ -27,6 +36,74 @@ actor FakeTransport: Transport {
 }
 
 final class EngineTests: XCTestCase {
+    func testImageSettingsRespectAppleCeilingAndRejectUnsafeURLsAndPixelBombs() throws {
+        XCTAssertEqual(NotificationImagePolicy.downloadLimit(20 * 1024 * 1024), 10 * 1024 * 1024)
+        XCTAssertEqual(NotificationImagePolicy.downloadLimit(1), 5 * 1024 * 1024)
+        XCTAssertTrue(NotificationImagePolicy.allows(URL(string: "https://images.example.test/image.png")!))
+        for address in ["http://example.test/image", "https://user:pass@example.test/image", "https://127.0.0.1/image", "https://172.20.0.1/image", "https://example.test:8443/image"] { XCTAssertFalse(NotificationImagePolicy.allows(URL(string: address)!)) }
+        XCTAssertFalse(NotificationImagePolicy.allowsPixels(width: 4096, height: 4096))
+        XCTAssertTrue(NotificationImagePolicy.allowsPixels(width: 2000, height: 1000))
+    }
+    func testLegacyStorageUpgradePreservesIdentityAndPendingClick() async throws {
+        let state = PersistentState.create(try config()); let data = try JSONEncoder().encode(state)
+        let decoded = try JSONDecoder().decode(PersistentState.self, from: data)
+        XCTAssertEqual(decoded.installationId, state.installationId); XCTAssertNil(decoded.supplemental)
+        let store = MemoryStore(); store.save(decoded)
+        let engine = try InstallationEngine(configuration: config(), store: store, transport: FakeTransport())
+        let status = await engine.status(); XCTAssertEqual(status.installationId, state.installationId)
+        XCTAssertNotNil(store.load()?.supplemental)
+    }
+    func testDiagnosticsSurviveRestartAndAcknowledgeStableIdsInBatches() async throws {
+        let store = MemoryStore(); let transport = FakeTransport(); await transport.enableDiagnostics()
+        let engine = try InstallationEngine(configuration: config(), store: store, transport: transport)
+        try await engine.capture(metadata)
+        for _ in 0..<105 { try await engine.record(NotificationEvent(type: "session_started", reason: "organic")) }
+        let ids = store.load()!.supplemental!.events.map(\.id)
+        await transport.fail(.network); do { try await engine.flush(); XCTFail() } catch {}
+        XCTAssertEqual(store.load()?.supplemental?.events.map(\.id), ids)
+        let restarted = try InstallationEngine(configuration: config(), store: store, transport: transport)
+        await transport.fail(nil); try await restarted.flush()
+        let batches = await transport.diagnostics
+        XCTAssertEqual(batches.map(\.count), [100, 5]); XCTAssertEqual(batches.flatMap { $0.map(\.id) }, ids)
+        XCTAssertEqual(store.load()?.supplemental?.events.count, 0)
+        XCTAssertEqual(store.load()?.snapshot?.telemetryVersion, 1)
+    }
+    func testConsentStopsCollectionAndDurableOperationsValidateBeforeQueueing() async throws {
+        let store = MemoryStore(); let transport = FakeTransport()
+        let engine = try InstallationEngine(configuration: config(), store: store, transport: transport, consentRequired: true)
+        try await engine.capture(metadata); try await engine.foreground(); try await engine.flush()
+        XCTAssertNil(store.load()?.snapshot); XCTAssertEqual(store.load()?.supplemental?.events.count, 0)
+        try await engine.consent(given: true); try await engine.capture(metadata)
+        var tags = UserOperation(kind: "tags"); tags.tags = ["buyer": "team1", "removed": nil]
+        try await engine.enqueue(tags)
+        var bad = UserOperation(kind: "login"); bad.externalId = "victim"
+        do { try await engine.enqueue(bad); XCTFail() } catch {}
+        XCTAssertEqual(store.load()?.supplemental?.userOperations.count, 1)
+        XCTAssertEqual(store.load()?.supplemental?.userOperations.first?.revision, 1)
+        try await engine.consent(given: false)
+        XCTAssertEqual(store.load()?.supplemental?.userOperations.count, 0)
+    }
+    func testSessionsDeduplicateShortForegroundTransitionsAndUseMonotonicDuration() async throws {
+        let store = MemoryStore(); let engine = try InstallationEngine(configuration: config(), store: store, transport: FakeTransport())
+        try await engine.foreground(wallMillis: 100000, uptime: 10); try await engine.foreground(wallMillis: 100000, uptime: 11)
+        try await engine.background(wallMillis: 90000, uptime: 12)
+        XCTAssertEqual(store.load()?.supplemental?.usage.totalUsageMillis, 2000)
+        try await engine.foreground(wallMillis: 90010, uptime: 13)
+        XCTAssertEqual(store.load()?.supplemental?.usage.sessionCount, 1)
+        try await engine.background(wallMillis: 100000, uptime: 14)
+        try await engine.foreground(wallMillis: 140000, uptime: 15)
+        XCTAssertEqual(store.load()?.supplemental?.usage.sessionCount, 2)
+    }
+    func testNotificationInboxIsAppScopedAndDoesNotStoreCredentials() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inbox = try NotificationInbox(directory: directory)
+        let event = NotificationEvent(type: "image_failed", messageId: UUID().uuidString.lowercased(), reason: "too_large")
+        try inbox.append(appId: appId, event: event); let values = try inbox.read(appId: appId)
+        XCTAssertEqual(values.count, 1); XCTAssertEqual(values[0].1, event)
+        XCTAssertEqual(try inbox.read(appId: UUID().uuidString.lowercased()).count, 0)
+        try inbox.remove(values[0].0); XCTAssertEqual(try inbox.read(appId: appId).count, 0)
+    }
     let appId = "00000000-0000-4000-8000-000000000001"
     var metadata: DeviceMetadata {
         DeviceMetadata(locale: "en-US", appLocales: ["en-US"], systemLocales: ["de-DE", "en-US"], timezone: "Europe/Berlin",

@@ -7,6 +7,15 @@ public protocol Transport: Sendable {
     func configure(_ configuration: Configuration) async throws
     func register(_ state: PersistentState, snapshot: DeviceSnapshot) async throws
     func opened(_ state: PersistentState, messageId: String) async throws
+    func remoteConfiguration(_ configuration: Configuration) async throws -> RemoteConfiguration
+    func telemetry(_ state: PersistentState, events: [NotificationEvent], dropped: Int64) async throws -> [String]
+    func user(_ state: PersistentState, operation: UserOperation?) async throws -> PushPortUser
+}
+
+public extension Transport {
+    func remoteConfiguration(_ configuration: Configuration) async throws -> RemoteConfiguration { try await configure(configuration); return RemoteConfiguration() }
+    func telemetry(_ state: PersistentState, events: [NotificationEvent], dropped: Int64) async throws -> [String] { [] }
+    func user(_ state: PersistentState, operation: UserOperation?) async throws -> PushPortUser { throw PushPortFailure.http(404) }
 }
 
 private final class NoRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
@@ -31,11 +40,25 @@ public final class HTTPTransport: Transport, @unchecked Sendable {
     deinit { session.invalidateAndCancel() }
 
     public func configure(_ configuration: Configuration) async throws {
+        _ = try await remoteConfiguration(configuration)
+    }
+    public func remoteConfiguration(_ configuration: Configuration) async throws -> RemoteConfiguration {
         var query = URLComponents(); query.queryItems = [URLQueryItem(name: "bundleId", value: configuration.bundleId)]
         let data = try await send(configuration, path: "config?\(query.percentEncodedQuery ?? "")", method: "GET")
-        struct Config: Decodable { let appId: String; let platform: String; let protocolVersion: Int }
+        struct Config: Decodable { let appId: String; let platform: String; let protocolVersion: Int; let telemetryVersion: Int?; let userProfileVersion: Int?; let imageLimitBytes: Int? }
         guard let result = try? JSONDecoder().decode(Config.self, from: data), result.appId == configuration.appId,
               result.platform == "IOS", result.protocolVersion == 1 else { throw PushPortFailure.invalidResponse }
+        return RemoteConfiguration(telemetryVersion: result.telemetryVersion ?? 0, userProfileVersion: result.userProfileVersion ?? 0, imageLimitBytes: result.imageLimitBytes ?? 5 * 1024 * 1024)
+    }
+    public func telemetry(_ state: PersistentState, events: [NotificationEvent], dropped: Int64) async throws -> [String] {
+        struct Batch: Encodable { let events: [NotificationEvent]; let dropped: Int64 }
+        struct Ack: Decodable { let acceptedIds: [String] }
+        let data = try await send(state.configuration, path: "installations/\(state.installationId)/telemetry", method: "POST", secret: state.secret, body: JSONEncoder().encode(Batch(events: events, dropped: dropped)))
+        return try JSONDecoder().decode(Ack.self, from: data).acceptedIds
+    }
+    public func user(_ state: PersistentState, operation: UserOperation?) async throws -> PushPortUser {
+        let data = try await send(state.configuration, path: "installations/\(state.installationId)/user", method: operation == nil ? "GET" : "PUT", secret: state.secret, body: try operation.map { try JSONEncoder().encode($0) })
+        return try JSONDecoder().decode(PushPortUser.self, from: data)
     }
     public func register(_ state: PersistentState, snapshot: DeviceSnapshot) async throws {
         _ = try await send(state.configuration, path: "installations/\(state.installationId)", method: "PUT",

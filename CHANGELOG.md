@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.2 — 2026-10-14
+
+- Durable batched notification diagnostics with stable event IDs, bounded outbox and retry acknowledgement.
+- Consent gating, foreground sessions/usage, direct and estimated influenced returns.
+- Confirmed user profiles, verified External ID login/logout, tags, explicit contact/location data and custom events.
+- Automatic project image limits (5 MiB by default); safe text fallback when image processing fails.
+- Backward-compatible installation identity and native SDK/bridge methods.
+- Notification Service Extension image diagnostics through an optional shared App Group; JPEG/PNG/GIF and WebP-to-PNG, 2000-pixel sampling. iOS app icons remain bundled; OS attachment ceiling is 10 MiB.
+
+
 ## 0.0.1 — 2026-09-13
 
 - Swift package and native iOS integration; portable engine tests and macOS Simulator CI.
