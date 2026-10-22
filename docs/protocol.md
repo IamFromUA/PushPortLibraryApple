@@ -1,6 +1,6 @@
 # PushPort SDK platform protocol 1 (release 0.0.2)
 
-Android's existing `/api/v1/sdk/apps/{appId}` v1 API is preserved. Native Apple and Web use a separate platform boundary under `/api/v1/sdk/apps/{appId}/platforms/{ios|web}`. The server supports native APNs and Web Push routing. See [provider setup](https://pushport.dev/en/docs/) for current deployment and application configuration.
+Android's existing `/api/v1/sdk/apps/{appId}` v1 API is preserved. Native Apple and Web use a separate platform boundary under `/api/v1/sdk/apps/{appId}/platforms/{ios|web}`. The server supports native APNs and Web Push routing. See [provider setup](https://pushport.dev/docs/) for current deployment and application configuration.
 
 | Request | Purpose |
 | --- | --- |
@@ -21,7 +21,7 @@ Web adds `webSubscription` (null or `{endpoint, expirationTime, keys: {p256dh, a
 
 Owner Web provisioning: authenticated `POST /api/v1/apps/{appId}/platforms/web/configure` creates one stable P-256 keypair and returns only `vapidPublicKey`. Private material is encrypted with the backend master key. Repeated calls preserve existing subscriptions' key. A configured key enables eligible Web subscriptions; it does not request browser permission. A browser-session route is also provided; its normal CSRF/session requirements apply.
 
-Registration responds `{installationId, syncedAt}`; an older revision cannot replace newer state. A 409 on a first-registration race can be retried with the same identity. Token changes preserve the user's subscription choice. Existing Android fields/table records are migrated additively (V8/V9), not deleted or rewritten to fictitious platforms.
+Registration responds `{installationId, syncedAt}`; an older revision cannot replace newer state. A 409 on a first-registration race can be retried with the same identity. Token changes preserve the user's subscription choice. Platform registration/provider tables are in the consolidated V1 baseline; subsequent migrations are additive. Existing Android records are not deleted or rewritten to fictitious platforms. See the backend database lifecycle guide for the current migration history.
 
 Opened event body: `{messageId: "canonical-uuid", type: "opened"}`. SDKs use bounded durable outboxes and server idempotency, not a retry-generated message ID. A 204 acknowledges the event; permission/last-seen is not a delivery receipt.
 
