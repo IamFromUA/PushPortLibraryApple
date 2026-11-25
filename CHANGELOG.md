@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 — 2026-11-25
+
+- Read the active application profile at startup with a bounded wait and cached fallback.
+
+- The app shares its current consent decision at startup and on change. With a configured App Group, the notification extension returns the original text when consent is denied or unavailable and checks again before attaching a downloaded picture.
+
+- Standard taps open a public HTTPS campaign link. The SDK reports the iOS handoff result separately from the tap. Apps that handle navigation can call `reportLinkResult(for:opened:)`.
+
 ## 0.0.2 — 2026-10-14
 
 - Durable batched notification diagnostics with stable event IDs, bounded outbox and retry acknowledgement.

@@ -25,9 +25,10 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         Task { @MainActor [weak self] in
-            _ = self?.owner?.handleNotificationResponse(response)
-            if let forwarding = self?.forwarding,
-               forwarding.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
+            let forwarding = self?.forwarding
+            let handlesTap = forwarding?.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) == true
+            _ = self?.owner?.handleNotificationResponse(response, openDefaultLink: !handlesTap)
+            if handlesTap, let forwarding {
                 forwarding.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
             } else { completionHandler() }
         }

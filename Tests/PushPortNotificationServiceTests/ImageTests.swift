@@ -17,6 +17,33 @@ final class ImageURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 final class ImageTests: XCTestCase {
+    func testUnavailableOrDeniedSharedConsentReturnsTextBeforeStartingDownload() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let app = UUID().uuidString.lowercased()
+        let file = directory.appendingPathComponent("PushPortNotificationConsent.json")
+        let content = UNMutableNotificationContent()
+        content.body = "Original text"
+        content.userInfo = ["pushport_app_id": app, "pushport_message_id": UUID().uuidString.lowercased(), "image_url": "https://images.example.test/image.png"]
+        let request = UNNotificationRequest(identifier: "consent", content: content, trigger: nil)
+        XCTAssertTrue(ExtensionConsent.standalone.allowsMedia(for: app))
+        XCTAssertFalse(ExtensionConsent.shared(nil).allowsMedia(for: app))
+        for snapshot in [nil, "invalid", "{\"appId\":\"other\",\"allowed\":true}", "{\"appId\":\"\(app)\",\"allowed\":false}"] as [String?] {
+            if let snapshot { try Data(snapshot.utf8).write(to: file) }
+            var completed = false
+            PushPortNotificationService().receive(request, consent: .shared(directory)) { result in
+                completed = true
+                XCTAssertEqual(result.body, content.body)
+                XCTAssertTrue(result.attachments.isEmpty)
+            }
+            XCTAssertTrue(completed, "The text fallback must finish before starting any asynchronous image request")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("PushPortNotificationEvents").path))
+        }
+        try Data("{\"appId\":\"\(app)\",\"allowed\":true}".utf8).write(to: file)
+        XCTAssertTrue(ExtensionConsent.shared(directory).allowsMedia(for: app))
+    }
+
     override func setUp() { ImageURLProtocol.status = 200; ImageURLProtocol.mime = "image/png" }
     func testValidImageAttachesAndReportsBytes() async {
         let configuration = URLSessionConfiguration.ephemeral; configuration.protocolClasses = [ImageURLProtocol.self]

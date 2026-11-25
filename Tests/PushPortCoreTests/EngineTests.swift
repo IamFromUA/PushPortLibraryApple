@@ -9,14 +9,28 @@ final class MemoryStore: StateStore, @unchecked Sendable {
 }
 
 actor FakeTransport: Transport {
+    var configurationRequests = 0
     var snapshots: [DeviceSnapshot] = []
     var events: [String] = []
     var failure: PushPortFailure?
     var delay: UInt64 = 0
     var diagnostics: [[NotificationEvent]] = []
     var supportsDiagnostics = false
+    var supportsProfiles = false
+    var appProfile = AppProfile()
+    func select(_ profile: AppProfile) { appProfile = profile }
+    var mutations: [UserOperation] = []
+    func enableProfiles() { supportsProfiles = true }
+    func user(_ state: PersistentState, operation: UserOperation?) async throws -> PushPortUser {
+        if let operation {
+            mutations.append(operation)
+            if operation.identityToken == String(repeating: "a", count: 43) { throw PushPortFailure.http(401) }
+        }
+        return PushPortUser(userId: "player", externalId: "player", properties: UserProperties(tags: [:]), revision: operation?.revision ?? 0)
+    }
     func remoteConfiguration(_ configuration: Configuration) async throws -> RemoteConfiguration {
-        try await configure(configuration); return RemoteConfiguration(telemetryVersion: supportsDiagnostics ? 1 : 0)
+        configurationRequests += 1
+        try await configure(configuration); return RemoteConfiguration(telemetryVersion: supportsDiagnostics ? 1 : 0, userProfileVersion: supportsProfiles ? 1 : 0, appProfile: appProfile)
     }
     func telemetry(_ state: PersistentState, events: [NotificationEvent], dropped: Int64) async throws -> [String] {
         if let failure { throw failure }; diagnostics.append(events); return events.map(\.id)
@@ -36,6 +50,91 @@ actor FakeTransport: Transport {
 }
 
 final class EngineTests: XCTestCase {
+    func testAppProfileColdStartOfflineAndReturnToDefault() async throws {
+        let store = MemoryStore()
+        let transport = FakeTransport()
+        let profile = AppProfile(id: "custom", name: "Магазин", value: "catalog")
+        await transport.select(profile)
+        let engine = try InstallationEngine(configuration: config(), store: store, transport: transport)
+        let first = await engine.status()
+        XCTAssertEqual(first.appProfile, AppProfile())
+        try await engine.flush()
+        let online = await engine.status()
+        XCTAssertEqual(online.appProfile, profile)
+        XCTAssertEqual(online.profileChecked, true)
+        let restarted = try InstallationEngine(configuration: config(), store: store, transport: transport)
+        await transport.fail(.network)
+        do { try await restarted.flush(); XCTFail("Expected offline transport") } catch {}
+        let offline = await restarted.status()
+        XCTAssertEqual(offline.appProfile, profile)
+        XCTAssertEqual(offline.profileChecked, false)
+        await transport.fail(nil)
+        await transport.select(AppProfile())
+        try await restarted.flush()
+        let restored = await restarted.status()
+        XCTAssertEqual(restored.appProfile, AppProfile())
+    }
+
+    func testExpiredLoginSurvivesRestartAndDoesNotBlockTelemetry() async throws {
+        let store = MemoryStore()
+        let transport = FakeTransport()
+        await transport.enableProfiles()
+        await transport.enableDiagnostics()
+        let engine = try InstallationEngine(configuration: config(), store: store, transport: transport)
+        var login = UserOperation(kind: "login")
+        login.externalId = "player"
+        login.identityToken = String(repeating: "a", count: 43)
+        var tags = UserOperation(kind: "tags")
+        tags.tags = ["level": "2"]
+        try await engine.enqueue(login)
+        try await engine.enqueue(tags)
+        do { try await engine.flush(); XCTFail("Expected proof renewal") }
+        catch PushPortFailure.identityTokenRequired {}
+        XCTAssertEqual(store.load()?.syncError, "identity_token_required")
+        XCTAssertEqual(store.load()?.supplemental?.userOperations.count, 2)
+        XCTAssertNil(store.load()?.supplemental?.userOperations.first?.identityToken)
+        let restored = try InstallationEngine(configuration: config(), store: store, transport: transport)
+        try await restored.record(NotificationEvent(type: "posted"))
+        do { try await restored.flush(); XCTFail("Expected proof renewal") }
+        catch PushPortFailure.identityTokenRequired {}
+        let diagnostics = await transport.diagnostics
+        XCTAssertEqual(diagnostics.flatMap { $0 }.map(\.type), ["posted"])
+        login.identityToken = String(repeating: "b", count: 43)
+        try await restored.enqueue(login)
+        try await restored.flush()
+        let calls = await transport.mutations
+        XCTAssertEqual(calls.map(\.revision), [1, 1, 2])
+        XCTAssertEqual(calls.map(\.kind), ["login", "login", "tags"])
+        XCTAssertTrue(store.load()?.supplemental?.userOperations.isEmpty == true)
+        XCTAssertNil(store.load()?.syncError)
+    }
+
+    func testSharedConsentFollowsColdStartGrantRevocationAndRestart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let binding = try config()
+        let store = MemoryStore()
+        let transport = FakeTransport()
+        let engine = try InstallationEngine(configuration: binding, store: store, transport: transport, consentRequired: true, sharedDirectory: directory)
+        XCTAssertFalse(NotificationConsent.allows(binding.appId, in: directory))
+        try await engine.capture(metadata)
+        try await engine.flush()
+        let snapshots = await transport.snapshots
+        let requests = await transport.configurationRequests
+        XCTAssertTrue(snapshots.isEmpty)
+        XCTAssertEqual(requests, 0)
+        try await engine.consent(given: true)
+        XCTAssertTrue(NotificationConsent.allows(binding.appId, in: directory))
+        XCTAssertFalse(NotificationConsent.allows(UUID().uuidString, in: directory))
+        try await engine.consent(given: false)
+        XCTAssertFalse(NotificationConsent.allows(binding.appId, in: directory))
+        let restored = try InstallationEngine(configuration: binding, store: store, transport: transport, sharedDirectory: directory)
+        let allowed = await restored.collectionAllowed()
+        XCTAssertFalse(allowed)
+        XCTAssertFalse(NotificationConsent.allows(binding.appId, in: directory))
+    }
+
     func testImageSettingsRespectAppleCeilingAndRejectUnsafeURLsAndPixelBombs() throws {
         XCTAssertEqual(NotificationImagePolicy.downloadLimit(20 * 1024 * 1024), 10 * 1024 * 1024)
         XCTAssertEqual(NotificationImagePolicy.downloadLimit(1), 5 * 1024 * 1024)

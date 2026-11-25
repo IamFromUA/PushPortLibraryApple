@@ -22,11 +22,24 @@ public struct UsageSnapshot: Codable, Equatable, Sendable {
     public var totalUsageMillis: Int64 = 0
     public init() {}
 }
+public struct AppProfile: Codable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let value: String
+    public init(id: String = "default", name: String = "Основной", value: String = "") {
+        self.id = id
+        self.name = name
+        self.value = value
+    }
+}
+
 public struct RemoteConfiguration: Sendable {
+    public var appProfile: AppProfile
     public var telemetryVersion: Int
     public var userProfileVersion: Int
     public var imageLimitBytes: Int
-    public init(telemetryVersion: Int = 0, userProfileVersion: Int = 0, imageLimitBytes: Int = 5 * 1024 * 1024) {
+    public init(telemetryVersion: Int = 0, userProfileVersion: Int = 0, imageLimitBytes: Int = 5 * 1024 * 1024, appProfile: AppProfile = AppProfile()) {
+        self.appProfile = appProfile
         self.telemetryVersion = telemetryVersion == 1 ? 1 : 0; self.userProfileVersion = userProfileVersion == 1 ? 1 : 0
         self.imageLimitBytes = (1024 * 1024...20 * 1024 * 1024).contains(imageLimitBytes) ? imageLimitBytes : 5 * 1024 * 1024
     }
@@ -105,6 +118,7 @@ public struct UserOperation: Codable, Sendable, CustomStringConvertible {
     }
 }
 public struct SupplementalState: Codable, Sendable {
+    public var appProfile: AppProfile?
     public var consentRequired = false
     public var consentGiven = false
     public var telemetryVersion = 0
@@ -122,6 +136,29 @@ public struct SupplementalState: Codable, Sendable {
     public var userOperations: [UserOperation] = []
     public init() {}
     public var collectionAllowed: Bool { !consentRequired || consentGiven }
+}
+
+package struct NotificationConsent: Codable, Sendable {
+    let appId: String
+    let allowed: Bool
+    private static let filename = "PushPortNotificationConsent.json"
+
+    package static func allows(_ appId: String, in directory: URL) -> Bool {
+        let url = directory.appendingPathComponent(filename)
+        guard let data = try? Data(contentsOf: url),
+              let consent = try? JSONDecoder().decode(Self.self, from: data) else { return false }
+        return consent.appId == appId && consent.allowed
+    }
+
+    func save(in directory: URL) throws {
+        let url = directory.appendingPathComponent(Self.filename)
+        do {
+            try JSONEncoder().encode(self).write(to: url, options: .atomic)
+        } catch {
+            if !allowed { try? FileManager.default.removeItem(at: url) }
+            throw PushPortFailure.storageUnavailable
+        }
+    }
 }
 
 /// A separate, bounded spool per event avoids cross-process updates to installation credentials.

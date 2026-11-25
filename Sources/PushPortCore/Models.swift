@@ -6,7 +6,7 @@ public enum APNsEnvironment: String, Codable, Sendable { case sandbox, productio
 
 public enum PushPortFailure: Error, Equatable, LocalizedError, Sendable {
     case invalidConfiguration, configurationConflict, notInitialized, invalidLocale, storageUnavailable
-    case invalidResponse, network, http(Int)
+    case invalidResponse, network, http(Int), identityTokenRequired
     public var errorDescription: String? {
         switch self {
         case .invalidConfiguration: return "Use a canonical PushPort App ID, bundle ID and HTTPS server URL."
@@ -14,6 +14,7 @@ public enum PushPortFailure: Error, Equatable, LocalizedError, Sendable {
         case .notInitialized: return "Initialize PushPort first."
         case .invalidLocale: return "Use a BCP-47 locale such as de-DE."
         case .storageUnavailable: return "PushPort could not access persistent installation storage."
+        case .identityTokenRequired: return "identity_token_required"
         case .invalidResponse: return "PushPort returned an invalid response."
         case .network: return "PushPort is unreachable. Pending changes will be retried."
         case .http(let status): return "PushPort request failed (\(status))."
@@ -93,6 +94,8 @@ public struct DeviceSnapshot: Codable, Equatable, Sendable {
 }
 
 public struct Status: Codable, Equatable, Sendable {
+    public var appProfile: AppProfile? = nil
+    public var profileChecked: Bool? = nil
     public let configured: Bool
     public let installationId: String
     public let subscribed: Bool
@@ -131,7 +134,7 @@ public struct PersistentState: Codable, Sendable, CustomStringConvertible {
     }
 
     public var status: Status {
-        Status(configured: true, installationId: installationId, subscribed: subscribed, hasToken: token != nil,
+        Status(appProfile: supplemental?.collectionAllowed == false ? AppProfile() : supplemental?.appProfile ?? AppProfile(), configured: true, installationId: installationId, subscribed: subscribed, hasToken: token != nil,
                notificationsEnabled: snapshot?.notificationsEnabled ?? false, locale: snapshot?.locale,
                lastSyncedAt: lastSyncedAt, syncError: syncError)
     }
@@ -143,7 +146,7 @@ public struct PersistentState: Codable, Sendable, CustomStringConvertible {
                               language: String(locale.split(separator: "-").first ?? "en").lowercased(), locale: locale,
                               appLocales: localeOverride.map { [$0] } ?? metadata.appLocales, systemLocales: metadata.systemLocales,
                               timezone: metadata.timezone, notificationsEnabled: metadata.notificationsEnabled,
-                              pushSubscribed: subscribed, sdkVersion: "0.0.2", appVersion: metadata.appVersion,
+                              pushSubscribed: subscribed, sdkVersion: "0.1.1", appVersion: metadata.appVersion,
                               osVersion: metadata.osVersion, model: metadata.model)
         result.telemetryVersion = supplemental?.telemetryVersion ?? 0
         result.usage = supplemental?.usage

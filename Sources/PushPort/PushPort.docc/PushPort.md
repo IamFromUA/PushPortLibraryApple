@@ -4,7 +4,7 @@ Connect an iOS application to PushPort with its App ID. The native SDK registers
 
 ## Integration
 
-Initialize at application launch, forward the APNs registration callbacks and request notification permission from a deliberate user action. The host owns Apple signing/capabilities and click navigation.
+Initialize at application launch, forward the APNs registration callbacks and request notification permission from a deliberate user action. Configure signing and capabilities in the host app. Default taps open public HTTPS links. Hosts that implement custom routing can report the actual navigation result with `reportLinkResult(for:opened:)`.
 
 ## Persistence
 

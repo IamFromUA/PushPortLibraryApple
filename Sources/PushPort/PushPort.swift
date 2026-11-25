@@ -11,17 +11,28 @@ import Network
 @MainActor
 public final class PushPort {
     public static let shared = PushPort()
-    public static let version = "0.0.2"
+    public static let version = "0.1.1"
     /// Called on the main actor; registering a callback does not replace the host notification delegate.
     public var onStatusChange: ((Status) -> Void)?
     public var onNotificationOpened: ((PushPortNotification) -> Void)?
     public private(set) var status: Status?
+    public var appProfile: AppProfile { collectionEnabled ? status?.appProfile ?? AppProfile() : AppProfile() }
+
+    /// Uses the existing startup sync. A slow network never holds the first screen beyond one second.
+    public func resolveAppProfile() async -> AppProfile {
+        guard engine != nil, collectionEnabled else { return appProfile }
+        let deadline = ProcessInfo.processInfo.systemUptime + 1
+        while status?.profileChecked != true && ProcessInfo.processInfo.systemUptime < deadline && !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return appProfile
+    }
+
     public private(set) var registrationError: String?
     public private(set) var user: PushPortUser?
     public private(set) var collectionEnabled = true
     private var consentRequired: Bool?
     private var consentGiven: Bool?
-    private var groupDirectory: URL?
     private var notificationInbox: NotificationInbox?
     private var engine: InstallationEngine?
     private var configuration: Configuration?
@@ -53,12 +64,15 @@ public final class PushPort {
         let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                   appropriateFor: nil, create: true)
         let store = try FileStateStore(directory: support.appendingPathComponent("PushPort", isDirectory: true))
-        engine = try InstallationEngine(configuration: config, store: store, consentRequired: consentRequired, consentGiven: consentGiven)
-        collectionEnabled = try store.load()?.supplemental?.collectionAllowed ?? true
+        let group = Bundle.main.object(forInfoDictionaryKey: "PushPortAppGroup") as? String
+        let directory = group.flatMap { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: $0) }
+        engine = try InstallationEngine(configuration: config, store: store, consentRequired: consentRequired, consentGiven: consentGiven, sharedDirectory: directory)
+        let saved = try store.load()
+        status = saved?.status
+        collectionEnabled = saved?.supplemental?.collectionAllowed ?? true
         configuration = config
-        if let group = Bundle.main.object(forInfoDictionaryKey: "PushPortAppGroup") as? String,
-           let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) {
-            groupDirectory = directory; notificationInbox = try NotificationInbox(directory: directory)
+        if let directory {
+            notificationInbox = try NotificationInbox(directory: directory)
         }
         if manageNotificationDelegate {
             let center = UNUserNotificationCenter.current()
@@ -123,6 +137,12 @@ public final class PushPort {
     /// For hosts that own their notification delegate. Returns false for notifications from another app/provider.
     @discardableResult
     public func handleNotificationResponse(_ response: UNNotificationResponse) -> Bool {
+        handleNotificationResponse(response, openDefaultLink: false)
+    }
+
+    /// A host forwarding taps can explicitly delegate standard HTTPS navigation to the SDK.
+    @discardableResult
+    public func handleNotificationResponse(_ response: UNNotificationResponse, openDefaultLink: Bool) -> Bool {
         guard let config = configuration, let notification = PushPortNotification(userInfo: response.notification.request.content.userInfo),
               notification.appId == config.appId else { return false }
         // Dismissals are not opens. Custom actions are user interactions and count as opens.
@@ -130,8 +150,23 @@ public final class PushPort {
         if let engine {
             Task { try? await engine.opened(appId: notification.appId, messageId: notification.messageId); await synchronize() }
         }
-        onNotificationOpened?(notification)
+        notification.route(defaultTap: openDefaultLink && response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+                           hostHandler: onNotificationOpened) { url in
+            UIApplication.shared.open(url, options: [:]) { accepted in
+                self.reportLinkResult(for: notification, opened: accepted)
+            }
+        }
         return true
+    }
+
+    /// Report the outcome if the host handles navigation in onNotificationOpened.
+    public func reportLinkResult(for notification: PushPortNotification, opened: Bool) {
+        guard notification.appId == configuration?.appId, notification.clickURL != nil, let engine else { return }
+        Task {
+            try? await engine.record(NotificationEvent(type: opened ? "link_opened" : "link_failed",
+                messageId: notification.messageId, reason: opened ? nil : "no_handler"))
+            await synchronize()
+        }
     }
 
     func recognizes(_ notification: UNNotification) -> Bool {
@@ -160,10 +195,6 @@ public final class PushPort {
         guard let engine else { return }
         let allowed = await engine.collectionAllowed()
         collectionEnabled = allowed
-        if let directory = groupDirectory, let config = configuration {
-            struct Consent: Encodable { let appId: String; let allowed: Bool }
-            try? JSONEncoder().encode(Consent(appId: config.appId, allowed: allowed)).write(to: directory.appendingPathComponent("PushPortNotificationConsent.json"), options: .atomic)
-        }
         if let inbox = notificationInbox, let config = configuration, let events = try? inbox.read(appId: config.appId) {
             for (file, event) in events { do { if allowed { try await engine.record(event) }; try inbox.remove(file) } catch { break } }
         }
@@ -182,7 +213,7 @@ public final class PushPort {
         do {
             try await engine.capture(metadata)
             await refreshStatus()
-            try await engine.flush()
+            try await engine.flush { [weak self] in await self?.refreshStatus() }
             failures = 0; retry?.cancel(); retry = nil
         } catch {
             if let failure = error as? PushPortFailure, failure.retryable, failures < 6 {
@@ -205,17 +236,24 @@ public final class PushPort {
     }
 }
 
-/// Validated PushPort notification. Custom URL navigation is controlled by the host.
+/// Validated PushPort notification for automatic or host-managed navigation.
 public struct PushPortNotification: Sendable {
     public let appId: String
     public let messageId: String
     public let clickURL: URL?
+    @MainActor func route(defaultTap: Bool, hostHandler: ((PushPortNotification) -> Void)?, openURL: (URL) -> Void) {
+        if let hostHandler { hostHandler(self) }
+        else if defaultTap, let clickURL { openURL(clickURL) }
+    }
+
     init?(userInfo: [AnyHashable: Any]) {
         guard let appId = userInfo["pushport_app_id"] as? String, Configuration.isUUID(appId),
               let messageId = userInfo["pushport_message_id"] as? String, Configuration.isUUID(messageId) else { return nil }
         self.appId = appId; self.messageId = messageId
-        if let value = userInfo["click_url"] as? String, let url = URL(string: value), url.scheme == "https",
-           url.host != nil, url.user == nil, url.password == nil { clickURL = url } else { clickURL = nil }
+        if let value = userInfo["click_url"] as? String, let url = URL(string: value),
+           NotificationImagePolicy.allows(url), let host = url.host?.lowercased(), host.contains("."),
+           host.range(of: "[a-z]", options: .regularExpression) != nil, !host.contains(":"),
+           ![".local", ".internal", ".localhost", ".test"].contains(where: { host.hasSuffix($0) }) { clickURL = url } else { clickURL = nil }
     }
 }
 #endif

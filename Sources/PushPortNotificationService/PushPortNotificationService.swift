@@ -4,6 +4,23 @@ import UserNotifications
 import PushPortCore
 import ImageIO
 
+enum ExtensionConsent {
+    case standalone
+    case shared(URL?)
+
+    static var current: Self {
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "PushPortAppGroup") as? String else { return .standalone }
+        return .shared(FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group))
+    }
+
+    func allowsMedia(for appId: String) -> Bool {
+        switch self {
+        case .standalone: return true
+        case .shared(let directory): return directory.map { NotificationConsent.allows(appId, in: $0) } ?? false
+        }
+    }
+}
+
 /// Subclass this from the host's Notification Service Extension target to attach HTTPS images.
 /// Add mutable-content: 1 to the APNs aps payload. Expiry always returns the original text.
 open class PushPortNotificationService: UNNotificationServiceExtension {
@@ -16,18 +33,18 @@ open class PushPortNotificationService: UNNotificationServiceExtension {
     private var inbox: NotificationInbox?
 
     open override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+        receive(request, consent: .current, contentHandler: contentHandler)
+    }
+
+    func receive(_ request: UNNotificationRequest, consent: ExtensionConsent, contentHandler: @escaping (UNNotificationContent) -> Void) {
         guard let mutable = request.content.mutableCopy() as? UNMutableNotificationContent else { contentHandler(request.content); return }
         lock.lock(); completion = contentHandler; content = mutable; lock.unlock()
         guard let app = request.content.userInfo["pushport_app_id"] as? String, Configuration.isUUID(app),
               let message = request.content.userInfo["pushport_message_id"] as? String, Configuration.isUUID(message) else { finish(); return }
-        appId = app; messageId = message
-        if let group = Bundle.main.object(forInfoDictionaryKey: "PushPortAppGroup") as? String,
-           let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) {
-            struct Consent: Decodable { let appId: String; let allowed: Bool }
-            if let bytes = try? Data(contentsOf: directory.appendingPathComponent("PushPortNotificationConsent.json")),
-               let consent = try? JSONDecoder().decode(Consent.self, from: bytes), consent.appId == app, consent.allowed {
-                inbox = try? NotificationInbox(directory: directory)
-            }
+        appId = app; messageId = message; inbox = nil
+        guard consent.allowsMedia(for: app) else { finish(); return }
+        if case .shared(let directory?) = consent {
+            inbox = try? NotificationInbox(directory: directory)
         }
         report("received")
         guard let raw = request.content.userInfo["image_url"] as? String else { finish(); return }
@@ -41,6 +58,7 @@ open class PushPortNotificationService: UNNotificationServiceExtension {
         self.downloader = downloader
         downloader.start(url) { [weak self] attachment, reason, bytes, duration, status in
             guard let self else { return }
+            guard consent.allowsMedia(for: app) else { self.finish(); return }
             self.lock.lock()
             let active = self.completion != nil
             if active, let attachment { self.content?.attachments = [attachment] }
